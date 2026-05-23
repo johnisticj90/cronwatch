@@ -1,70 +1,52 @@
-/**
- * Express router for job-related API endpoints.
- * Exposes the job store over HTTP for the dashboard frontend.
- */
-const express = require('express');
 const { getAllJobs, getJob } = require('../store/jobStore');
-const { ingestFile } = require('../store/ingest');
-
-const router = express.Router();
 
 /**
- * GET /api/jobs
- * Returns all tracked cron jobs with their execution history.
- * Query params:
- *   - user: filter by unix user
- *   - limit: max number of jobs to return (default 100)
+ * Returns a summary list of all known cron jobs.
  */
-router.get('/', (req, res) => {
-  try {
-    let jobs = getAllJobs();
-
-    if (req.query.user) {
-      jobs = jobs.filter(j => j.user === req.query.user);
-    }
-
-    const limit = parseInt(req.query.limit, 10) || 100;
-    jobs = jobs.slice(0, limit);
-
-    res.json({ jobs, total: jobs.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+function getJobList() {
+  const jobs = getAllJobs();
+  return jobs.map(job => ({
+    name: job.name,
+    source: job.source,
+    lastRun: job.lastRun || null,
+    status: job.lastStatus || 'unknown',
+    totalRuns: job.executions.length,
+    successCount: job.executions.filter(e => e.status === 'success').length,
+    failureCount: job.executions.filter(e => e.status === 'failure').length,
+  }));
+}
 
 /**
- * GET /api/jobs/:key
- * Returns a single job by its store key (user:command).
+ * Returns detailed info for a single job including full execution history.
+ * @param {string} name
+ * @param {string} source
  */
-router.get('/:key', (req, res) => {
-  try {
-    const key = decodeURIComponent(req.params.key);
-    const job = getJob(key);
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-    res.json(job);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+function getJobDetail(name, source) {
+  const job = getJob(name, source);
+  if (!job) return null;
 
-/**
- * POST /api/jobs/ingest
- * Triggers ingestion of a log file on the server.
- * Body: { filePath: string }
- */
-router.post('/ingest', (req, res) => {
-  const { filePath } = req.body;
-  if (!filePath) {
-    return res.status(400).json({ error: 'filePath is required' });
-  }
-  try {
-    const count = ingestFile(filePath);
-    res.json({ ingested: count, filePath });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  const history = [...job.executions].sort(
+    (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+  );
 
-module.exports = router;
+  const successCount = history.filter(e => e.status === 'success').length;
+  const failureCount = history.filter(e => e.status === 'failure').length;
+  const durations = history.map(e => e.duration).filter(d => d != null);
+  const avgDuration = durations.length
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : null;
+
+  return {
+    name: job.name,
+    source: job.source,
+    lastRun: job.lastRun || null,
+    lastStatus: job.lastStatus || 'unknown',
+    totalRuns: history.length,
+    successCount,
+    failureCount,
+    avgDuration,
+    history,
+  };
+}
+
+module.exports = { getJobList, getJobDetail };

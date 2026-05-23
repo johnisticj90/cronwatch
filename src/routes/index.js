@@ -1,18 +1,14 @@
-import express from 'express';
-import jobsRouter from '../api/jobs.js';
-import statsRouter from './stats.js';
+const express = require('express');
+const statsRouter = require('./stats');
+const jobsRouter = require('./jobs');
 
 const router = express.Router();
 
-// Health check
-router.get('/health', (req, res) => {
-  res.json({ ok: true, uptime: process.uptime() });
-});
-
-// Job history endpoints
+router.use('/stats', statsRouter);
 router.use('/jobs', jobsRouter);
 
-// Statistics endpoints
-router.use('/stats', statsRouter);
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-export default router;
+module.exports = router;
