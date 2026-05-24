@@ -14,6 +14,14 @@ describe('makeKey', () => {
   it('combines user and command with separator', () => {
     expect(makeKey('root', '/usr/bin/backup.sh')).toBe('root::/usr/bin/backup.sh');
   });
+
+  it('produces different keys for different users with same command', () => {
+    expect(makeKey('root', '/bin/job.sh')).not.toBe(makeKey('deploy', '/bin/job.sh'));
+  });
+
+  it('produces different keys for same user with different commands', () => {
+    expect(makeKey('root', '/bin/a.sh')).not.toBe(makeKey('root', '/bin/b.sh'));
+  });
 });
 
 describe('recordExecution', () => {
@@ -37,6 +45,15 @@ describe('recordExecution', () => {
     recordExecution({ ...base, timestamp: new Date('2024-01-15T02:00:00Z') });
     const job = getJob('deploy', '/opt/cleanup.sh');
     expect(job.executions).toHaveLength(2);
+  });
+
+  it('increments runCount on each execution', () => {
+    const base = { user: 'root', command: '/bin/count.sh', message: 'CMD' };
+    recordExecution({ ...base, timestamp: new Date('2024-01-15T01:00:00Z') });
+    recordExecution({ ...base, timestamp: new Date('2024-01-15T02:00:00Z') });
+    recordExecution({ ...base, timestamp: new Date('2024-01-15T03:00:00Z') });
+    const job = getJob('root', '/bin/count.sh');
+    expect(job.runCount).toBe(3);
   });
 
   it('tracks separate entries for different jobs', () => {
